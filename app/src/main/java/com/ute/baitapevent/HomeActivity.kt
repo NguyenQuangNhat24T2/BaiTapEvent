@@ -14,7 +14,7 @@ class HomeActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         // Nhan du lieu User tu Intent
-        val user = intent.Serializable("EXTRA_USER") as? User
+        val user = intent.getSerializableExtra("EXTRA_USER") as? User
         user?.let {
             binding.tvName.text = "Họ tên: ${it.fullName}"
             binding.tvEmail.text = "Email: ${it.email}"
