@@ -1,86 +1,114 @@
-package com.ute.baitapevent // Nhớ đổi theo package của project bạn
+package com.ute.baitapevent
 
 import android.content.Intent
 import android.os.Bundle
 import android.os.SystemClock
-import android.widget.CompoundButton
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.widget.doAfterTextChanged
+import com.google.android.material.snackbar.Snackbar
 import com.ute.baitapevent.databinding.ActivityMainBinding
+import com.ute.baitapevent.model.User
+import com.ute.baitapevent.validator.FormValidator
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private var lastClickTime: Long = 0L
-    private val CLICK_DEBOUNCE_DELAY = 1000L // Chống click đúp trong 1 giây[cite: 4, 5]
+    private val CLICK_DEBOUNCE_DELAY = 1000L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // 1. Lắng nghe thao tác gõ phím trên EditText (Hiển thị Toast tương tác)[cite: 7]
-        binding.etFullName.doAfterTextChanged { text ->
-            if (!text.isNullOrEmpty()) {
-                Toast.makeText(this, "Đang nhập: $text", Toast.LENGTH_SHORT).show()
-            }
-        }
+        setupRealtimeValidation()
+        setupButtons()
+    }
 
-        // 2. Lắng nghe sự kiện chọn RadioGroup Giới tính[cite: 9]
-        binding.rgGender.setOnCheckedChangeListener { _, checkedId ->
-            val gender = when (checkedId) {
-                R.id.rbMale -> "Nam"
-                R.id.rbFemale -> "Nữ"
-                else -> "Khác"
-            }
-            Toast.makeText(this, "Đã chọn giới tính: $gender", Toast.LENGTH_SHORT).show()
-        }
+    // Xoa loi tuc thi khi nguoi dung go phim (Lab 5 - Bai 2)
+    private fun setupRealtimeValidation() {
+        binding.etFullName.doAfterTextChanged { binding.tilFullName.error = null }
+        binding.etEmail.doAfterTextChanged { binding.tilEmail.error = null }
+        binding.etPassword.doAfterTextChanged { binding.tilPassword.error = null }
+        binding.etPhone.doAfterTextChanged { binding.tilPhone.error = null }
+    }
 
-        // 3. Lắng nghe sự kiện CheckBox Mạng xã hội[cite: 8, 9]
-        val socialListener = CompoundButton.OnCheckedChangeListener { buttonView, isChecked ->
-            val socialName = buttonView.text.toString()
-            val status = if (isChecked) "Đã chọn" else "Đã bỏ chọn"
-            Toast.makeText(this, "$status: $socialName", Toast.LENGTH_SHORT).show()
-        }
-        binding.cbFacebook.setOnCheckedChangeListener(socialListener)
-        binding.cbZalo.setOnCheckedChangeListener(socialListener)
-        binding.cbInstagram.setOnCheckedChangeListener(socialListener)
-
-        // 4. Xử lý nút Đăng ký (Có chống click đúp & chuyển màn hình kèm dữ liệu)[cite: 4, 5]
+    private fun setupButtons() {
+        // Nut Dang Ky
         binding.btnSubmit.setOnClickListener {
             val currentTime = SystemClock.elapsedRealtime()
-            if (currentTime - lastClickTime < CLICK_DEBOUNCE_DELAY) {
-                return@setOnClickListener // Bấm quá nhanh, bỏ qua[cite: 5]
-            }
+            if (currentTime - lastClickTime < CLICK_DEBOUNCE_DELAY) return@setOnClickListener
             lastClickTime = currentTime
 
-            val name = binding.etFullName.text.toString().trim()
-            if (name.isEmpty()) {
-                Toast.makeText(this, "Vui lòng nhập họ tên!", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
+            if (validateForm()) {
+                // Success: Tao doi tuong User va chuyen sang man hinh trang chu
+                val name = binding.etFullName.text.toString().trim()
+                val email = binding.etEmail.text.toString().trim()
+                val phone = binding.etPhone.text.toString().trim()
+                val genderId = binding.rgGender.checkedRadioButtonId
+                val gender = when (genderId) {
+                    R.id.rbMale -> "Nam"
+                    R.id.rbFemale -> "Nữ"
+                    else -> "Khác"
+                }
 
-            val genderId = binding.rgGender.checkedRadioButtonId
-            val gender = when (genderId) {
-                R.id.rbMale -> "Nam"
-                R.id.rbFemale -> "Nữ"
-                R.id.rbOther -> "Khác"
-                else -> "Chưa chọn"
+                val user = User(name, email, phone, gender)
+                val intent = Intent(this, HomeActivity::class.java).apply {
+                    putExtra("EXTRA_USER", user)
+                }
+                startActivity(intent)
+            } else {
+                // Fail: Hien Snackbar bao loi
+                Snackbar.make(binding.root, "Vui lòng kiểm tra lại thông tin nhập lỗi!", Snackbar.LENGTH_LONG).show()
             }
-
-            val socials = mutableListOf<String>()
-            if (binding.cbFacebook.isChecked) socials.add("Facebook")
-            if (binding.cbZalo.isChecked) socials.add("Zalo")
-            if (binding.cbInstagram.isChecked) socials.add("Instagram")
-            val socialsStr = if (socials.isNotEmpty()) socials.joinToString(", ") else "Không chọn"
-
-            // Chuyển sang DetailActivity và truyền dữ liệu qua Intent
-            val intent = Intent(this, DetailActivity::class.java).apply {
-                putExtra("EXTRA_NAME", name)
-                putExtra("EXTRA_GENDER", gender)
-                putExtra("EXTRA_SOCIALS", socialsStr)
-            }
-            startActivity(intent)
         }
+
+        // Nut Huy / Lam moi: Xoa trang cac truong
+        binding.btnCancel.setOnClickListener {
+            resetForm()
+            Snackbar.make(binding.root, "Đã xóa toàn bộ thông tin", Snackbar.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun validateForm(): Boolean {
+        var isValid = true
+
+        val name = binding.etFullName.text.toString().trim()
+        if (!FormValidator.isValidName(name)) {
+            binding.tilFullName.error = "Họ tên tối thiểu 3 ký tự"
+            isValid = false
+        }
+
+        val email = binding.etEmail.text.toString().trim()
+        if (!FormValidator.isValidEmail(email)) {
+            binding.tilEmail.error = "Email không đúng định dạng chuẩn"
+            isValid = false
+        }
+
+        val password = binding.etPassword.text.toString().trim()
+        if (!FormValidator.isValidPassword(password)) {
+            binding.tilPassword.error = "Mật khẩu tối thiểu 6 ký tự"
+            isValid = false
+        }
+
+        val phone = binding.etPhone.text.toString().trim()
+        if (!FormValidator.isValidPhone(phone)) {
+            binding.tilPhone.error = "Số điện thoại Việt Nam không hợp lệ (10 số)"
+            isValid = false
+        }
+
+        return isValid
+    }
+
+    private fun resetForm() {
+        binding.etFullName.text?.clear()
+        binding.etEmail.text?.clear()
+        binding.etPassword.text?.clear()
+        binding.etPhone.text?.clear()
+        binding.tilFullName.error = null
+        binding.tilEmail.error = null
+        binding.tilPassword.error = null
+        binding.tilPhone.error = null
+        binding.rgGender.check(R.id.rbMale)
+        binding.etFullName.requestFocus()
     }
 }
